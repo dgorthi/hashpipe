@@ -247,5 +247,124 @@ it is already in that state.
 
 \end{enumerate}
 
+\section{Status Handling}
+Routines dealing with the hashpipe status shared memory
+segment.  Info is passed through this segment using
+a FITS-like keyword=value syntax.
+
+\begin{centering}
+\begin{lstlisting}
+/* Structure describes status memory area */
+typedef struct {
+  /* Instance ID of this status buffer (DO NOT SET/CHANGE!) */
+    int instance_id;
+
+  /* Shared memory segment id */
+    int shmid;
+
+  /* POSIX semaphore descriptor for locking */
+    sem_t *lock;
+
+  /* Pointer to data area */
+    char *buf; 
+} hashpipe_status_t;
+\end{lstlisting}
+\end{centering}
+
+\subsection*{Status handling functions}
+\begin{enumerate}
+
+\item Semaphore name:
+Stores the hashpipe status (POSIX) semaphore name in semid buffer of length
+size.  Returns 0 (no error) if semaphore name fit in given size, returns 1
+if semaphore name is truncated.
+
+The hashpipe status semaphore name is {\tt \$HASHPIPE\_STATUS\_SEMNAME} (if defined
+in the environment) or {\tt \${HASHPIPE\_KEYFILE}\_hashpipe\_status} (if defined in
+the environment) or {\tt \${HOME}\_hashpipe\_status} (if defined in the environment)
+or {\tt "/tmp\_hashpipe\_status"} (global fallback).  Any slashes after the leading
+slash are converted to underscores.
+
+\clst{int hashpipe_status_semname(int instance_id, char * semid, size_t size); }
+
+\item Instance ID number:
+
+Returns non-zero if the status buffer for instance\_id already exists.
+
+\clst{int hashpipe_status_exists(int instance_id);}
+
+\item Attach buffer:
+
+Return a pointer to the status shared mem area,
+creating it if it doesn't exist.  Attaches/creates
+lock semaphore as well.  Returns nonzero on error.
+
+\clst{int hashpipe_status_attach(int instance_id, hashpipe_status_t *s); }
+
+
+\item Detach buffer: Detach from shared mem segment
+
+\clst{int hashpipe_status_detach(hashpipe_status_t *s);}
+
+\item Locking/Unlocking status buffer:
+
+Lock/unlock the status buffer.  hashpipe\_status\_lock() will sleep while
+waiting for the buffer to become unlocked.  hashpipe\_status\_lock\_busywait
+will busy-wait while waiting for the buffer to become unlocked.  Return
+non-zero on errors.
+
+\begin{centering}
+\begin{lstlisting}
+
+int hashpipe_status_lock(hashpipe_status_t *s);
+
+int hashpipe_status_lock_busywait(hashpipe_status_t *s);
+
+int hashpipe_status_unlock(hashpipe_status_t *s);
+
+\end{lstlisting}
+\end{centering}
+
+\item Check formatting:
+
+Check the buffer for appropriate formatting (existence of {\tt "END"}).
+If not found, zero it out and add {\tt END}.
+
+\clst{void hashpipe_status_chkinit(hashpipe_status_t *s);}
+
+\item Clear: Clear out whole buffer
+
+\clst{void hashpipe_status_clear(hashpipe_status_t *s);}
+
+\item Thread safe lock/unlock:
+
+Thread-safe lock/unlock macros for status buffer used to ensure that the
+status buffer is not left in a locked state.  Each hashpipe\_status\_lock\_safe
+or hashpipe\_status\_lock\_busywait\_safe must be paired with a
+hashpipe\_status\_unlock\_safe in the same function and at the same lexical
+nesting level.  See "man pthread\_cleanup\_push" for more details.
+
+\paragraph{Note} This header file does not include pthread.h where pthread\_cleanup\_push
+and pthread\_cleanup\_pop are defined.  Users of the macros defined here
+must explicitly include pthread.h themselves.
+
+\begin{centering}
+\begin{lstlisting}
+
+#define hashpipe_status_lock_safe(s) \
+    pthread_cleanup_push((void (*)(void *))hashpipe_status_unlock, s); \
+    hashpipe_status_lock(s);
+
+#define hashpipe_status_lock_busywait_safe(s) \
+    pthread_cleanup_push((void (*)(void *))hashpipe_status_unlock, s); \
+    hashpipe_status_lock_busywait(s);
+
+#define hashpipe_status_unlock_safe(s) \
+    hashpipe_status_unlock(s); \
+    pthread_cleanup_pop(0);
+\end{lstlisting}
+\end{centering}
+
+\end{enumerate}
 
 \end{document}
