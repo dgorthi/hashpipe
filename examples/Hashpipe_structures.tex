@@ -1,0 +1,251 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58, 0, 0.82}
+\definecolor{backcolor}{rgb}{0.95,0.95,0.92}
+
+\lstloadlanguages{C}
+
+\lstdefinestyle{Cstyle}{
+    language=C,
+    backgroundcolor=\color{white},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue},
+    %numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily,
+    breaklines=true,
+    breakatwhitespace=false,
+    breakautoindent=true,
+    keepspaces=true,
+    %numbers=left,
+    %numbersep=5pt,
+    showtabs=false,
+    tabsize=2
+}
+
+\lstset{style=Cstyle}
+\def\clst{\lstinline[basicstyle=\ttfamily,breaklines=true,language=C]}
+
+\begin{document}
+
+\title{List of Hashpipe Structures} \author{Deepthi Gorthi}
+\maketitle
+
+\section{Thread Structures and Functions}
+
+\subsection{\clst{hashpipe_thread_desc_t}}
+
+\begin{lstlisting}
+        struct hashpipe_thread_desc {
+          const char * name;
+          const char * skey;
+          initfunc_t init;
+          runfunc_t run;
+          databuf_desc_t ibuf_desc;
+          databuf_desc_t obuf_desc;
+        };
+\end{lstlisting}
+
+The \clst{hashpipe_thread_desc} structure is used to store metadata 
+describing a hashpipe thread.  Typically a hashpipe plugin will 
+define one of these hashpipe thread descriptors per hashpipe thread.  
+
+\begin{enumerate}
+\item \clst{const char *name}: String containing the thread name. Hashpipe threads are 
+identified by their names which need to be registered with 
+\clst{register_hashpipe_thread()}. This is used to match command 
+line thread specifiers to thread metadata so that the pipeline can be 
+constructed as specified on the command line.
+
+\item \clst{const char *skey}: String containing the thread's status 
+buffer ``status" key. It is typically 8 characters or less, uppercase and 
+ends with ``STAT". If it is \clst{non-NULL} and non-empty, \clst{HASHPIPE} 
+will automatically store/update this key in the status buffer with the 
+thread's status at initialization (``init") and exit (``exit").
+
+\item \clst{initfunc_t init}: Pointer to thread's initialization function. The thread 
+initialization function can be null if no special initialization is needed.  
+If provided, it must point to a function with the following signature:
+
+\clst{int my_thread_init_funtion(hashpipe_thread_args_t *args) }
+
+\item \clst{runfunc_t run}: Pointer to thread's run function. The thread run 
+function must have the following signature:
+
+\clst{void my_thread_run_funtion(hashpipe_thread_args_t *args) }
+
+\item \clst{ibuf}: Structure describing thread's input data buffer (if any)
+
+\item \clst{obuf}: Structure describing thread's output data buffer (if any). The 
+data buffer description structure used for ibuf and obuf currently contains 
+one function pointer:
+
+create - A pointer to a function that creates the data buffer.
+
+Future \clst{HASHPIPE} versions may introduce additional data buffer fields. 
+\clst{ibuf.create} should be \clst{ NULL} for input-only threads and 
+\clst{obuf.create} should be \clst{ NULL} for output-only threads.  
+Having both \clst{ibuf.create} and \clst{ obuf.create} set to \clst{ NULL} is 
+invalid and the thread will not be used. The create function must have the 
+following signature:
+
+\begin{lstlisting}
+hashpipe_databuf_t *my_create_function(           int instance_id, int databuf_id)
+\end{lstlisting}
+\end{enumerate}
+
+\subsection{\clst{hashpipe_thread_args}}
+
+This structure passed (via a pointer) to the application's thread
+initialization and run functions.  The `user\_data' field can be used to pass
+info from the init function to the run function.
+
+\begin{enumerate}
+
+\item \clst{hashpipe_thread_desc_t *thread_desc}
+\item \clst{int instance_id}
+\item \clst{int input_buffer}
+\item \clst{int output_buffer}
+\item \clst{unsigned int cpu_mask}: 0 means use inherited
+\item \clst{int finished}
+\item \clst{pthread_cond_t finished_c}
+\item \clst{pthread_mutex_t finished_m}
+\item \clst{hashpipe_status_t st}
+\item \clst{hashpipe_databuf_t *ibuf}
+\item \clst{hashpipe_databuf_t *obuf}
+\item \clst{void *user_data}
+\end{enumerate}
+
+\subsection{Useful Functions}
+
+\begin{enumerate}
+\item\clst{int run_threads()}: Function threads used to determine 
+whether to keep running.
+
+\item\clst{register_hashpipe_thread (hashpipe_thread_desc_t *ptm)}: 
+Function should be used by pipeline plugins to register threads with 
+the pipeline executable.
+
+\item\clst{hashpipe_thread_desc_t *find_hashpipe_thread(char *name)}:
+This function can be used to find hashpipe threads by name.  
+It is generally used only by the hashpipe executable.  Returns a 
+pointer to its \clst{hashpipe_thread_desc_t} structure or 
+\clst{NULL} if a test with the given name is not found. Names are 
+case sensitive.
+
+\item\clst{void list_hashpipe_threads(FILE *f)}: List all known hashpipe threads 
+to file pointed to by the file pointer.
+
+\item\clst{unsigned int get_cpu_affinity()}: Get the CPU affinity of calling 
+thread.
+
+\end{enumerate}
+
+\section{Data Buffer Structures and Functions}
+
+\subsection{\clst{hashpipe_databuf_t}}
+
+\begin{enumerate}
+\item \clst{char data_type[64]}: Type of data in the buffer
+\item \clst{size_t header_size}: Size of each block header in bytes 
+\item \clst{size_t block_size}: Size of each data block in bytes.
+\item \clst{int n_block}: Number of data blocks in buffer
+\item \clst{int shmid}: ID of this shared memory segment
+\item \clst{int semid}: ID of locking semaphore set
+\end{enumerate}
+
+\subsection{Associated functions}
+
+\begin{enumerate}
+\item {\bf Key}:
+
+\clst{key_t hashpipe_databuf_key()}
+
+Get the base key to use for {\bf all} hashpipe databufs.  The base key is
+obtained by calling the ftok function, using the value of 
+{\tt \$HASHPIPE\_KEYFILE}, if defined, or {\tt \$HOME} from the environment or, 
+if {\tt \$HOME} is not defined, by using {\tt \/tmp}. By default 
+(i.e. no {\tt HASHPIPE\_KEYFILE} in the environment), this will create and 
+connect to a user specific set of shared memory buffers (provided {\tt \$HOME} 
+exists in the environment), but if desired users can connect to any other set 
+of memory buffers by setting {\tt HASHPIPE\_KEYFILE} appropriately.
+
+\item {\bf Create Databuf}:
+
+\begin{lstlisting}
+hashpipe_databuf_t *hashpipe_databuf_create(int instance_id,int databuf_id, size_t header_size, size_t block_size, int n_block)
+\end{lstlisting}
+
+Create a new shared mem area with given params.  Returns pointer to the new
+area on success, or \clst{NULL} on error.  Returns error if an existing shmem area
+exists with the given shmid and different sizing parameters. 
+
+\item {\bf Get Databuf}:
+
+\clst{hashpipe_databuf_t *hashpipe_databuf_attach(int   instance_id, int databuf_id)}
+
+Return a pointer to a existing shmem segment with given id. Returns error 
+if segment does not exist 
+
+\item {\bf Detach Databuf}:
+
+\clst{int hashpipe_databuf_detach(hashpipe_databuf_t *d)}
+
+Detach from shared mem segment
+
+\item {\bf Clear Databuf}:
+
+\clst{void hashpipe_databuf_clear(hashpipe_databuf_t *d)}
+
+\item {\bf Reset Pointer location}:
+\begin{lstlisting}
+char *hashpipe_databuf_data(   hashpipe_databuf_t *d, int block_id)
+\end{lstlisting}
+
+Returns pointer to the beginning of the given data block.
+
+\item {\bf Get lock status}:
+
+\begin{lstlisting}
+int hashpipe_databuf_block_status(hashpipe_databuf_t *d, int block_id)
+
+int hashpipe_databuf_total_status(hashpipe_databuf_t *d)
+
+uint64_t hashpipe_databuf_total_mask(hashpipe_databuf_t *d)
+\end{lstlisting}
+
+Returns lock status for given block\_id, or total for whole array.
+
+\item {\bf Locking functions}:
+
+\begin{lstlisting}
+int hashpipe_databuf_wait_filled(hashpipe_databuf_t *d, int block_id)
+
+int hashpipe_databuf_busywait_filled(hashpipe_databuf_t *d, int block_id)
+
+int hashpipe_databuf_set_filled(hashpipe_databuf_t *d, int block_id)
+
+int hashpipe_databuf_wait_free(hashpipe_databuf_t *d, int block_id)
+
+int hashpipe_databuf_busywait_free(hashpipe_databuf_t *d, int block_id)
+
+int hashpipe_databuf_set_free( hashpipe_databuf_t *d, int block_id)
+\end{lstlisting}
+
+Databuf locking functions.  Each block in the buffer
+can be marked as free or filled.  The "wait" functions
+block (i.e. sleep) until the specified state happens.
+The "busywait" functions busy-wait (i.e. do NOT sleep)
+until the specified state happens.  The "set" functions
+put the buffer in the specified state, returning error if
+it is already in that state.
+
+\end{enumerate}
+
+
+\end{document}
