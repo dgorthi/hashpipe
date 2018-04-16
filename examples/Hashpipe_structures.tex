@@ -247,5 +247,43 @@ it is already in that state.
 
 \end{enumerate}
 
+\section{Error Handling}
+
+\subsection{Exit codes}
+\vspace{1cm}
+\begin{center}
+\begin{tabular}{|c|c|c|}
+\hline
+{\tt HASHPIPE\_OK}          &  0 & Everything is great\\[0.25cm] 
+\hline
+{\tt HASHPIPE\_TIMEOUT}     &  1 & Call timed out \\[0.25cm]
+\hline
+{\tt HASHPIPE\_ERR\_GEN}    & -1 & Super non-informative \\[0.25cm]
+\hline
+{\tt HASHPIPE\_ERR\_SYS}    & -2 & Failed system call \\[0.25cm]
+\hline
+{\tt HASHPIPE\_ERR\_PARAM}  & -3 & Parameter out of range \\[0.25cm]
+\hline
+{\tt HASHPIPE\_ERR\_KEY}    & -4 & Requested key doesn't exist \\[0.25cm]
+\hline
+{\tt HASHPIPE\_ERR\_PACKET} & -5 & Unexpected packet size \\[0.25cm]
+\hline
+\end{tabular}
+\end{center}
+
+\subsection{Error logging}
+\begin{enumerate}
+\item log error: Call this to log an error message.
+
+\clst{void hashpipe_error(const char *name, const char *msg, ..);}
+
+\item log warning: Call this to log an warning message.
+
+\clst{void hashpipe_warn(const char *name, const char *msg, ...);}
+
+\item log info: Call this to log an informational message.
+
+\clst{void hashpipe_info(const char *name, const char *msg, ...);}
+\end{enumerate}
 
 \end{document}
