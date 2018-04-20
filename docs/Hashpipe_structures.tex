@@ -1,0 +1,608 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58, 0, 0.82}
+\definecolor{backcolor}{rgb}{0.95,0.95,0.92}
+
+\lstloadlanguages{C}
+
+\lstdefinestyle{Cstyle}{
+    language=C,
+    backgroundcolor=\color{white},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue},
+    %numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily,
+    breaklines=true,
+    breakatwhitespace=false,
+    breakautoindent=true,
+    keepspaces=true,
+    %numbers=left,
+    %numbersep=5pt,
+    showtabs=false,
+    tabsize=2
+}
+
+\lstset{style=Cstyle}
+\def\clst{\lstinline[basicstyle=\ttfamily,breaklines=true,language=C]}
+
+\begin{document}
+
+\title{Hashpipe Structures} \author{Deepthi Gorthi}
+\maketitle
+
+This file is a compilation of all the handy structures and functions Hashpipe 
+provides for building a fast data capture and recording pipeline.
+
+\section{Thread Structures and Functions}
+
+\subsection{\clst{hashpipe_thread_desc_t}}
+
+\begin{lstlisting}
+        struct hashpipe_thread_desc {
+          const char * name;
+          const char * skey;
+          initfunc_t init;
+          runfunc_t run;
+          databuf_desc_t ibuf_desc;
+          databuf_desc_t obuf_desc;
+        };
+\end{lstlisting}
+
+The \clst{hashpipe_thread_desc} structure is used to store metadata 
+describing a hashpipe thread.  Typically a hashpipe plugin will 
+define one of these hashpipe thread descriptors per hashpipe thread.  
+
+\begin{enumerate}
+\item \clst{const char *name}: String containing the thread name. Hashpipe threads are 
+identified by their names which need to be registered with 
+\clst{register_hashpipe_thread()}. This is used to match command 
+line thread specifiers to thread metadata so that the pipeline can be 
+constructed as specified on the command line.
+
+\item \clst{const char *skey}: String containing the thread's status 
+buffer ``status" key. It is typically 8 characters or less, uppercase and 
+ends with ``STAT". If it is \clst{non-NULL} and non-empty, \clst{HASHPIPE} 
+will automatically store/update this key in the status buffer with the 
+thread's status at initialization (``init") and exit (``exit").
+
+\item \clst{initfunc_t init}: Pointer to thread's initialization function. The thread 
+initialization function can be null if no special initialization is needed.  
+If provided, it must point to a function with the following signature:
+
+\clst{int my_thread_init_funtion(hashpipe_thread_args_t *args) }
+
+\item \clst{runfunc_t run}: Pointer to thread's run function. The thread run 
+function must have the following signature:
+
+\clst{void my_thread_run_funtion(hashpipe_thread_args_t *args) }
+
+\item \clst{ibuf}: Structure describing thread's input data buffer (if any)
+
+\item \clst{obuf}: Structure describing thread's output data buffer (if any). The 
+data buffer description structure used for ibuf and obuf currently contains 
+one function pointer:
+
+create - A pointer to a function that creates the data buffer.
+
+Future \clst{HASHPIPE} versions may introduce additional data buffer fields. 
+\clst{ibuf.create} should be \clst{ NULL} for input-only threads and 
+\clst{obuf.create} should be \clst{ NULL} for output-only threads.  
+Having both \clst{ibuf.create} and \clst{ obuf.create} set to \clst{ NULL} is 
+invalid and the thread will not be used. The create function must have the 
+following signature:
+
+\begin{lstlisting}
+hashpipe_databuf_t *my_create_function(           int instance_id, int databuf_id)
+\end{lstlisting}
+\end{enumerate}
+
+\subsection{\clst{hashpipe_thread_args}}
+
+This structure passed (via a pointer) to the application's thread
+initialization and run functions.  The `user\_data' field can be used to pass
+info from the init function to the run function.
+
+\begin{enumerate}
+
+\item \clst{hashpipe_thread_desc_t *thread_desc}
+\item \clst{int instance_id}
+\item \clst{int input_buffer}
+\item \clst{int output_buffer}
+\item \clst{unsigned int cpu_mask}: 0 means use inherited
+\item \clst{int finished}
+\item \clst{pthread_cond_t finished_c}
+\item \clst{pthread_mutex_t finished_m}
+\item \clst{hashpipe_status_t st}
+\item \clst{hashpipe_databuf_t *ibuf}
+\item \clst{hashpipe_databuf_t *obuf}
+\item \clst{void *user_data}
+\end{enumerate}
+
+\subsection{Useful Functions}
+
+\begin{enumerate}
+\item\clst{int run_threads()}: Function threads used to determine 
+whether to keep running.
+
+\item\clst{register_hashpipe_thread (hashpipe_thread_desc_t *ptm)}: 
+Function should be used by pipeline plugins to register threads with 
+the pipeline executable.
+
+\item\clst{hashpipe_thread_desc_t *find_hashpipe_thread(char *name)}:
+This function can be used to find hashpipe threads by name.  
+It is generally used only by the hashpipe executable.  Returns a 
+pointer to its \clst{hashpipe_thread_desc_t} structure or 
+\clst{NULL} if a test with the given name is not found. Names are 
+case sensitive.
+
+\item\clst{void list_hashpipe_threads(FILE *f)}: List all known hashpipe threads 
+to file pointed to by the file pointer.
+
+\item\clst{unsigned int get_cpu_affinity()}: Get the CPU affinity of calling 
+thread.
+
+\end{enumerate}
+
+\section{Data Buffer Structures and Functions}
+
+\subsection{\clst{hashpipe_databuf_t}}
+
+\begin{enumerate}
+\item \clst{char data_type[64]}: Type of data in the buffer
+\item \clst{size_t header_size}: Size of each block header in bytes 
+\item \clst{size_t block_size}: Size of each data block in bytes.
+\item \clst{int n_block}: Number of data blocks in buffer
+\item \clst{int shmid}: ID of this shared memory segment
+\item \clst{int semid}: ID of locking semaphore set
+\end{enumerate}
+
+\subsection{Associated functions}
+
+\begin{enumerate}
+\item {\bf Key}:
+
+\clst{key_t hashpipe_databuf_key()}
+
+Get the base key to use for {\bf all} hashpipe databufs.  The base key is
+obtained by calling the ftok function, using the value of 
+{\tt \$HASHPIPE\_KEYFILE}, if defined, or {\tt \$HOME} from the environment or, 
+if {\tt \$HOME} is not defined, by using {\tt \/tmp}. By default 
+(i.e. no {\tt HASHPIPE\_KEYFILE} in the environment), this will create and 
+connect to a user specific set of shared memory buffers (provided {\tt \$HOME} 
+exists in the environment), but if desired users can connect to any other set 
+of memory buffers by setting {\tt HASHPIPE\_KEYFILE} appropriately.
+
+\item {\bf Create Databuf}:
+
+\begin{lstlisting}
+hashpipe_databuf_t *hashpipe_databuf_create(int instance_id,int databuf_id, size_t header_size, size_t block_size, int n_block)
+\end{lstlisting}
+
+Create a new shared mem area with given params.  Returns pointer to the new
+area on success, or \clst{NULL} on error.  Returns error if an existing shmem area
+exists with the given shmid and different sizing parameters. 
+
+\item {\bf Get Databuf}:
+
+\clst{hashpipe_databuf_t *hashpipe_databuf_attach(int instance_id, int databuf_id)}
+
+Return a pointer to a existing shmem segment with given id. Returns error 
+if segment does not exist 
+
+\item {\bf Detach Databuf}:
+
+\clst{int hashpipe_databuf_detach(hashpipe_databuf_t *d)}
+
+Detach from shared mem segment
+
+\item {\bf Clear Databuf}:
+
+\clst{void hashpipe_databuf_clear(hashpipe_databuf_t *d)}
+
+\item {\bf Reset Pointer location}:
+\begin{lstlisting}
+char *hashpipe_databuf_data(   hashpipe_databuf_t *d, int block_id)
+\end{lstlisting}
+
+Returns pointer to the beginning of the given data block.
+
+\item {\bf Get lock status}:
+
+\begin{lstlisting}
+int hashpipe_databuf_block_status(hashpipe_databuf_t *d, int block_id)
+
+int hashpipe_databuf_total_status(hashpipe_databuf_t *d)
+
+uint64_t hashpipe_databuf_total_mask(hashpipe_databuf_t *d)
+\end{lstlisting}
+
+Returns lock status for given block\_id, or total for whole array.
+
+\item {\bf Locking functions}:
+
+\begin{lstlisting}
+int hashpipe_databuf_wait_filled(hashpipe_databuf_t *d, int block_id)
+
+int hashpipe_databuf_busywait_filled(hashpipe_databuf_t *d, int block_id)
+
+int hashpipe_databuf_set_filled(hashpipe_databuf_t *d, int block_id)
+
+int hashpipe_databuf_wait_free(hashpipe_databuf_t *d, int block_id)
+
+int hashpipe_databuf_busywait_free(hashpipe_databuf_t *d, int block_id)
+
+int hashpipe_databuf_set_free( hashpipe_databuf_t *d, int block_id)
+\end{lstlisting}
+
+Databuf locking functions.  Each block in the buffer
+can be marked as free or filled.  The "wait" functions
+block (i.e. sleep) until the specified state happens.
+The "busywait" functions busy-wait (i.e. do NOT sleep)
+until the specified state happens.  The "set" functions
+put the buffer in the specified state, returning error if
+it is already in that state.
+
+\end{enumerate}
+
+\section{Status Handling}
+Routines dealing with the hashpipe status shared memory
+segment.  Info is passed through this segment using
+a FITS-like keyword=value syntax.
+
+\begin{centering}
+\begin{lstlisting}
+typedef struct {
+    int instance_id;
+    int shmid;
+    sem_t *lock;
+    char *buf; 
+} hashpipe_status_t;
+\end{lstlisting}
+\end{centering}
+
+\subsection*{Status handling functions}
+\begin{enumerate}
+
+\item Semaphore name:
+Stores the hashpipe status (POSIX) semaphore name in semid buffer of length
+size.  Returns 0 (no error) if semaphore name fit in given size, returns 1
+if semaphore name is truncated.
+
+The hashpipe status semaphore name is {\tt \$HASHPIPE\_STATUS\_SEMNAME} 
+(if defined in the environment) or {\tt \${HASHPIPE\_KEYFILE}\_hashpipe\_status} 
+(if defined in the environment) or {\tt \${HOME}\_hashpipe\_status} 
+(if defined in the environment) or {\tt "/tmp\_hashpipe\_status"} 
+(global fallback).  Any slashes after the leading slash are converted to 
+underscores.
+
+\clst{int hashpipe_status_semname(int instance_id, char * semid, size_t size) }
+
+\item Instance ID number:
+
+Returns non-zero if the status buffer for instance\_id already exists.
+
+\clst{int hashpipe_status_exists(int instance_id)}
+
+\item Attach buffer:
+
+Return a pointer to the status shared mem area,
+creating it if it doesn't exist.  Attaches/creates
+lock semaphore as well.  Returns nonzero on error.
+
+\clst{int hashpipe_status_attach(int instance_id, hashpipe_status_t *s) }
+
+
+\item Detach buffer: Detach from shared mem segment
+
+\clst{int hashpipe_status_detach(hashpipe_status_t *s)}
+
+\item Locking/Unlocking status buffer:
+
+Lock/unlock the status buffer.  hashpipe\_status\_lock() will sleep while
+waiting for the buffer to become unlocked.  hashpipe\_status\_lock\_busywait
+will busy-wait while waiting for the buffer to become unlocked.  Return
+non-zero on errors.
+
+\begin{centering}
+\begin{lstlisting}
+
+int hashpipe_status_lock(hashpipe_status_t *s)
+
+int hashpipe_status_lock_busywait(hashpipe_status_t *s)
+
+int hashpipe_status_unlock(hashpipe_status_t *s)
+
+\end{lstlisting}
+\end{centering}
+
+\item Check formatting:
+
+Check the buffer for appropriate formatting (existence of {\tt "END"}).
+If not found, zero it out and add {\tt END}.
+
+\clst{void hashpipe_status_chkinit(hashpipe_status_t *s)}
+
+\item Clear: Clear out whole buffer
+
+\clst{void hashpipe_status_clear(hashpipe_status_t *s)}
+
+\item Thread safe lock/unlock:
+
+Thread-safe lock/unlock macros for status buffer used to ensure that the
+status buffer is not left in a locked state.  Each hashpipe\_status\_lock\_safe
+or hashpipe\_status\_lock\_busywait\_safe must be paired with a
+hashpipe\_status\_unlock\_safe in the same function and at the same lexical
+nesting level.  See "man pthread\_cleanup\_push" for more details.
+
+\paragraph{Note} This header file does not include pthread.h where pthread\_cleanup\_push
+and pthread\_cleanup\_pop are defined.  Users of the macros defined here
+must explicitly include pthread.h themselves.
+
+\begin{centering}
+\begin{lstlisting}
+
+#define hashpipe_status_lock_safe(s) \
+    pthread_cleanup_push((void (*)(void *))hashpipe_status_unlock, s); \
+    hashpipe_status_lock(s);
+
+#define hashpipe_status_lock_busywait_safe(s) \
+    pthread_cleanup_push((void (*)(void *))hashpipe_status_unlock, s); \
+    hashpipe_status_lock_busywait(s);
+
+#define hashpipe_status_unlock_safe(s) \
+    hashpipe_status_unlock(s); \
+    pthread_cleanup_pop(0);
+\end{lstlisting}
+\end{centering}
+
+\end{enumerate}
+\newpage
+\section{Socket and UDP packet handling}
+
+\subsection{\tt "hashpipe\_pktsock.h"}
+
+ Routines for dealing with packet sockets. See {\tt man 7 packet} and 
+{\tt packet\_mmap.txt} for more info.
+
+\begin{center}
+\begin{lstlisting}
+struct hashpipe_pktsock {
+  unsigned int frame_size;
+  unsigned int nframes;
+  unsigned int nblocks;
+  int fd;
+  unsigned char *p_ring;
+  int next_idx;
+};
+\end{lstlisting}
+\end{center}
+
+\subsubsection{Functional preprocessors}
+\begin{enumerate}
+\item {\bf Header}: Return header field `h` from packet frame pointed to by `p`
+
+\clst{TPACKET_HDR(p,h) (((struct tpacket_hdr *)p)->h)}
+
+\item {\bf MAC}: Return pointer to MAC header inside packet frame pointed to by `p`.
+
+\clst{PKT_MAC(p) (p+TPACKET_HDR(p, tp_mac))}
+
+\item {\bf Network}: Return pointer to network (e.g. IP) packet inside 
+packet frame pointed to by `p`.
+
+\clst{PKT_NET(p) (p+TPACKET_HDR(p, tp_net))}
+
+\item {\bf Check UDP}: Returns true (non-zero) if this is a UDP packet.
+
+\clst{PKT_IS_UDP(p) ((PKT_NET(p)[0x09]) == IPPROTO_UDP)}
+
+\item {\bf Destination}:  Returns UDP destination port of packet. {\bf NB:} 
+this assumes but does NOT verify that the packet is a UDP packet!
+
+\begin{lstlisting}
+PKT_UDP_DST(p) (((PKT_NET(p)[0x16]) << 8) | 
+                ((PKT_NET(p)[0x17]) ))
+\end{lstlisting}
+
+\item {\bf UDP Size}: Returns size of UDP packet (including the 8 byte UDP header).
+{\bf NB:} this assumes but does NOT verify that the packet is a UDP packet!
+\begin{lstlisting}
+PKT_UDP_SIZE(p) (((PKT_NET(p)[0x18]) << 8) |
+                 ((PKT_NET(p)[0x19])     ))
+\end{lstlisting}
+
+\item {\bf Get UDP Payload}: Returns pointer to UDP packet payload.
+{\bf NB:} this assumes but does NOT verify that the packet is a UDP packet!
+
+\clst{PKT_UDP_DATA(p) (PKT_NET(p) + 0x1c)}
+
+\end{enumerate}
+
+\subsubsection{Useful Functions}
+
+\begin{enumerate}
+
+\item Bind to Socket and attach it to a buffer: 
+
+{\tt p\_ps} should point to a {\tt struct pktsock} that has been initialized by
+caller with desired values for the sizing parmaters {\tt frame\_size}, {\tt nframes},
+and {\tt nblocks}.  {\tt nblocks} MUST be a multiple of {\tt nframes} and the resulting
+block size (i.e. {\tt frame\_size * nframes / nblocks}) MUST be a multiple of
+{\tt PAGE\_SIZE}.
+
+{\tt ifname} should specify the name of the interface to bind to (e.g. "eth2").
+
+{\tt ring\_type} should be {\tt PACKET\_RX\_RING} or {\tt PACKET\_TX\_RING}.
+
+Returns 0 for success, non-zero for failure.  On failure, errno will be set.
+
+Upon successful compltetion, {\tt p\_ps->fd} will the the file descriptor of the
+socket, and {\tt p\_ps->p\_ring} will be a poitner to the start of the ring buffer.
+
+\begin{lstlisting}
+int hashpipe_pktsock_open(struct hashpipe_pktsock *p_ps, const char *ifname, int ring_type)
+\end{lstlisting}
+
+\item Get frame:
+
+Return pointer to frame or NULL if no frame ready.
+
+If a non-NULL frame pointer is returned, the caller MUST release the frame
+back to the kernel (via {\tt pktsock\_release\_frame}) once it is finished with
+the frame.
+
+\begin{center}
+\begin{lstlisting}
+unsigned char * hashpipe_pktsock_recv_frame_nonblock(
+struct hashpipe_pktsock *p_ps)
+
+unsigned char * hashpipe_pktsock_recv_frame(struct hashpipe_pktsock *p_ps, 
+int timeout_ms)
+\end{lstlisting}
+\end{center}
+
+\item Get matching frame:
+
+If no frame is ready, returns NULL.  If a non-matching frame is ready, it is
+released back to the kernel and NULL is returned.  Otherwise, returns a
+pointer to the matching frame.
+
+If a non-NULL frame pointer is returned, the caller MUST release the frame
+back to the kernel (via {\tt pktsock\_release\_frame}) once it is finished with
+the frame.
+
+\begin{lstlisting}
+unsigned char * hashpipe_pktsock_recv_udp_frame_nonblock(struct hashpipe_pktsock *p_ps, int dst_port)
+\end{lstlisting}
+
+\item Wait for frame:
+
+If no frame is ready, wait up to {\tt timeout\_ms} to get a frame.  If no frame
+is ready after timeout, returns NULL.  If frame does not match, releases
+non-matching frame back to the kernel and returns NULL.  Otherwise returns
+pointer to matching frame.
+
+If a non-NULL frame pointer is returned, the caller MUST release the frame
+back to the kernel (via {\tt pktsock\_release\_frame}) once it is finished with
+the frame.
+
+\begin{lstlisting}
+unsigned char * hashpipe_pktsock_recv_udp_frame(struct hashpipe_pktsock *p_ps, int dst_port, int timeout_ms)
+\end{lstlisting}
+
+\item Release frame:
+Releases frame back to the kernel.  The caller must be release each frame
+back to the kernel once the caller is done with the frame.
+
+\clst{void hashpipe_pktsock_release_frame(unsigned char * frame)}
+
+\item Get stats:
+Stores packet counter and drop counter values in {\tt *p\_pkts} and 
+{\tt *p\_drops}, provided they are non-NULL.  This makes it possible to 
+request one but not the other.
+
+\begin{lstlisting}
+void hashpipe_pktsock_stats(struct hashpipe_pktsock *p_ps,unsigned int *p_pkts, unsigned int *p_drops)
+\end{lstlisting}
+
+\item Close socket:
+Unmaps kernel ring buffer and closes socket.
+
+\clst{int hashpipe_pktsock_close(struct hashpipe_pktsock *p_ps)}
+
+\end{enumerate}
+
+\subsection{\tt hashpipe\_udp.h}
+
+\begin{center}
+\begin{lstlisting}
+struct hashpipe_udp_params {
+    char sender[80];
+    int port;      
+    char bindhost[80]; 
+    int bindport;     
+    size_t packet_size;
+    char packet_format[32];
+
+    /* Derived from above: */
+    int sock;                      
+    struct addrinfo sender_addr;  
+    struct pollfd pfd;           
+};
+\end{lstlisting}
+\end{center}
+
+\begin{center}
+\begin{lstlisting}
+struct hashpipe_udp_packet {
+    size_t packet_size;  /* packet size, bytes */
+    char data[HASHPIPE_MAX_PACKET_SIZE] __attribute__ ((aligned(128)));
+};
+\end{lstlisting}
+\end{center}
+
+\subsubsection*{Functions}
+
+\begin{enumerate}
+
+\item 
+Use sender and port fields in param struct to init
+the other values, bind socket, etc.
+
+\clst{int hashpipe_udp_init(struct hashpipe_udp_params *p)}
+
+\item Close out socket, etc.
+
+\clst{int hashpipe_udp_close(struct hashpipe_udp_params *p)}
+
+\end{enumerate}
+
+\section{Error Handling}
+
+\subsection{Exit codes}
+\vspace{1cm}
+\begin{center}
+\begin{tabular}{|c|c|c|}
+\hline
+{\tt HASHPIPE\_OK}          &  0 & Everything is great\\[0.25cm] 
+\hline
+{\tt HASHPIPE\_TIMEOUT}     &  1 & Call timed out \\[0.25cm]
+\hline
+{\tt HASHPIPE\_ERR\_GEN}    & -1 & Super non-informative \\[0.25cm]
+\hline
+{\tt HASHPIPE\_ERR\_SYS}    & -2 & Failed system call \\[0.25cm]
+\hline
+{\tt HASHPIPE\_ERR\_PARAM}  & -3 & Parameter out of range \\[0.25cm]
+\hline
+{\tt HASHPIPE\_ERR\_KEY}    & -4 & Requested key doesn't exist \\[0.25cm]
+\hline
+{\tt HASHPIPE\_ERR\_PACKET} & -5 & Unexpected packet size \\[0.25cm]
+\hline
+\end{tabular}
+\end{center}
+
+\subsection{Error logging}
+
+\begin{enumerate}
+\item log error: Call this to log an error message.
+
+\clst{void hashpipe_error(const char *name, const char *msg, ..)}
+
+\item log warning: Call this to log an warning message.
+
+\clst{void hashpipe_warn(const char *name, const char *msg, ...)}
+
+\item log info: Call this to log an informational message.
+
+\clst{void hashpipe_info(const char *name, const char *msg, ...)}
+
+\end{enumerate}
+
+
+\end{document}
