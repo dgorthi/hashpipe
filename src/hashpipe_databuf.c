@@ -57,7 +57,7 @@ hashpipe_databuf_t *hashpipe_databuf_create(int instance_id,
     }
     if (shmid==-1) {
         perror("shmget");
-        hashpipe_error(__FUNCTION__, "shmget error");
+        hashpipe_error(__FUNCTION__, "shmget error: %s\n",strerror(errno));
         return NULL;
     }
 
